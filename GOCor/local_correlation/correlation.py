@@ -434,20 +434,39 @@ class _FunctionCorrelationTranspose(torch.autograd.Function):
 
         output = second.new_zeros([second.size(0), second.size(1), second.size(2), second.size(3)])
 
+        # Convert torch tensors to cupy
+        rbot0_dl = to_dlpack(rbot0)
+        rbot0_cp = cupy.fromDlpack(rbot0_dl)
+
+        input_dl = to_dlpack(input)
+        input_cp = cupy.fromDlpack(input_dl)
+
+        rbot1_dl = to_dlpack(rbot1)
+        rbot1_cp = cupy.fromDlpack(rbot1_dl)
+
+        second_dl = to_dlpack(second)
+        second_cp = cupy.fromDlpack(second_dl)
+
+        output_dl = to_dlpack(output)
+        output_cp = cupy.fromDlpack(output_dl)
+
+
         if second.is_cuda == True:
             n = second.size(2) * second.size(3)
+            n_cp = cupy.asarray(n)
             cupy_launch('kernel_Correlation_rearrange', cupy_kernel('kernel_Correlation_rearrange', {
                 'input': second,
                 'output': rbot1
             }))(
                 grid=tuple([int((n + 16 - 1) / 16), second.size(1), second.size(0)]),
                 block=tuple([16, 1, 1]),
-                args=[n, second.data_ptr(), rbot1.data_ptr()],
+                args=[n_cp, second_cp, rbot1_cp],
                 stream=Stream
             )
 
             for intSample in range(second.size(0)):
                 n = second.size(1) * second.size(2) * second.size(3)
+                n_cp = cupy.asarray(n)
                 cupy_launch('kernel_Correlation_updateGradFirst',
                             cupy_kernel('kernel_Correlation_updateGradFirst', {
                                 'rbot0': rbot0,
@@ -458,10 +477,14 @@ class _FunctionCorrelationTranspose(torch.autograd.Function):
                             }))(
                     grid=tuple([int((n + 512 - 1) / 512), 1, 1]),
                     block=tuple([512, 1, 1]),
-                    args=[n, intSample, rbot0.data_ptr(), rbot1.data_ptr(), input.data_ptr(),
-                          output.data_ptr(), None],
+                    args=[n_cp, intSample, rbot0_cp, rbot1_cp, input_cp,
+                          output_cp, None],
                     stream=Stream
                 )
+
+                # Convert cupy data to torch tensor
+                output = from_dlpack(output_cp.toDlpack())
+
 
         elif second.is_cuda == False:
             raise NotImplementedError()
