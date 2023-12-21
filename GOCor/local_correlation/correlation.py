@@ -255,7 +255,8 @@ def cupy_kernel(strFunction, objectVariables):
         strTensor = objectMatch.group(4)
         intSizes = objectVariables[strTensor].size()
 
-        strKernel = strKernel.replace(objectMatch.group(), str(intSizes[intArg]))
+        replaceStr = str(intSizes[intArg]).replace("tensor", "int")
+        strKernel = strKernel.replace(objectMatch.group(), replaceStr)
 
     while True:
         objectMatch = re.search('(VALUE_)([0-4])(\()([^\)]+)(\))', strKernel)
