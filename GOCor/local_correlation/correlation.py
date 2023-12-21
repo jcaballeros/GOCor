@@ -7,6 +7,8 @@ if hasattr(cupy, 'util'):
 else:
     import cupy as cupyutil
 
+from torch.utils.dlpack import to_dlpack
+from torch.utils.dlpack import from_dlpack
 
 
 class Stream:
@@ -274,6 +276,7 @@ def cupy_kernel(strFunction, objectVariables):
 
         strKernel = strKernel.replace(objectMatch.group(0), strTensor + '[' + str.join('+', strIndex) + ']')
 
+
     return strKernel
 
 
@@ -296,30 +299,50 @@ class _FunctionCorrelation(torch.autograd.Function):
 
         output = first.new_zeros([first.size(0), 81, first.size(2), first.size(3)])
 
+        # Convert torch tensors to cupy
+        rbot0_dl = to_dlpack(rbot0)
+        rbot0_cp = cupy.fromDlpack(rbot0_dl)
+
+        first_dl = to_dlpack(first)
+        first_cp = cupy.fromDlpack(first_dl)
+
+        rbot1_dl = to_dlpack(rbot1)
+        rbot1_cp = cupy.fromDlpack(rbot1_dl)
+
+        second_dl = to_dlpack(second)
+        second_cp = cupy.fromDlpack(second_dl)
+
+        output_dl = to_dlpack(output)
+        output_cp = cupy.fromDlpack(output_dl)
+
         if first.is_cuda == True:
             n = first.size(2) * first.size(3)
+            n_cp = cupy.asarray(n)
+
             cupy_launch('kernel_Correlation_rearrange', cupy_kernel('kernel_Correlation_rearrange', {
                 'input': first,
                 'output': rbot0
             }))(
                 grid=tuple([int((n + 16 - 1) / 16), first.size(1), first.size(0)]),
                 block=tuple([16, 1, 1]),
-                args=[n, first.data_ptr(), rbot0.data_ptr()],
+                args=[n_cp, first_cp, rbot0_cp],
                 stream=Stream
             )
 
             n = second.size(2) * second.size(3)
+            n_cp = cupy.asarray(n)
             cupy_launch('kernel_Correlation_rearrange', cupy_kernel('kernel_Correlation_rearrange', {
                 'input': second,
                 'output': rbot1
             }))(
                 grid=tuple([int((n + 16 - 1) / 16), second.size(1), second.size(0)]),
                 block=tuple([16, 1, 1]),
-                args=[n, second.data_ptr(), rbot1.data_ptr()],
+                args=[n_cp, second_cp, rbot1_cp],
                 stream=Stream
             )
 
             n = output.size(1) * output.size(2) * output.size(3)
+            n_cp = cupy.asarray(n)
             cupy_launch('kernel_Correlation_updateOutput', cupy_kernel('kernel_Correlation_updateOutput', {
                 'rbot0': rbot0,
                 'rbot1': rbot1,
@@ -328,12 +351,17 @@ class _FunctionCorrelation(torch.autograd.Function):
                 grid=tuple([output.size(3), output.size(2), output.size(0)]),
                 block=tuple([32, 1, 1]),
                 shared_mem=first.size(1) * 4,
-                args=[n, rbot0.data_ptr(), rbot1.data_ptr(), output.data_ptr()],
+                args=[n_cp, rbot0_cp, rbot1_cp, output_cp],
                 stream=Stream
             )
 
+            # Convert cupy data to torch tensor
+            output = from_dlpack(output_cp.toDlpack())
+
+
         elif first.is_cuda == False:
             raise NotImplementedError()
+
 
         return output
 
