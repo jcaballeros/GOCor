@@ -4,6 +4,9 @@ import math
 import torch.nn.functional as F
 from torchvision import transforms
 
+import onnx
+import onnxruntime as ort
+
 
 class BasePWCNet(nn.Module):
     '''
@@ -104,7 +107,7 @@ class BasePWCNet(nn.Module):
         torch.onnx.export(self, (target_img, source_img), "PWCNet_GOCor_chairs_things.onnx",
                           export_params=True, opset_version=16, do_constant_folding=True,
                           input_names = ['query', 'reference'],
-                          output_names = ['output'],
+                          output_names = ['output'], verbose=False,
                           dynamic_axes={'query' : {0 : 'batch_size', 2: 'height', 3: 'width'},
                                         'output' : {0 : 'batch_size', 2: 'height', 3: 'width'}})
 
@@ -124,6 +127,25 @@ class BasePWCNet(nn.Module):
 
         flow_est[:, 0, :, :] *= ratio_x
         flow_est[:, 1, :, :] *= ratio_y
+
+
+
+        # Test ONNX model
+        onnx_model = onnx.load("PWCNet_GOCor_chairs_things.onnx")
+        try:
+            onnx.checker.check_model(onnx_model)
+        except onnx.checker.ValidationError as e:
+            print("The model is invalid: %s" % e)
+        else:
+            print("The model is valid!")
+
+        ort_sess = ort.InferenceSession('PWCNet_GOCor_chairs_things.onnx')
+
+        onnx_output = ort_sess.run(['output'], {'query': target_img.cpu().numpy()})
+        flow_est_list_onnx = onnx_output[0]
+
+        # TODO: Compare ONNX output with Original output
+
         if mode == 'channel_first':
             return flow_est
         else:
