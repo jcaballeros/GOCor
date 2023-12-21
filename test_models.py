@@ -7,6 +7,7 @@ import cv2
 from utils_flow.pixel_wise_mapping import remap_using_flow_fields
 from model_selection import select_model
 from utils_flow.util_optical_flow import flow_to_image
+import torch.onnx
 
 
 def pad_to_same_shape(im1, im2):
@@ -86,8 +87,8 @@ with torch.no_grad():
                            path_to_pre_trained_models=args.pre_trained_models_dir)
 
     # convert numpy to torch tensor and put it in right shape
-    query_image_ = torch.from_numpy(query_image).permute(2, 0, 1).unsqueeze(0)
-    reference_image_ = torch.from_numpy(reference_image).permute(2, 0, 1).unsqueeze(0)
+    query_image_ = torch.tensor(query_image, dtype=torch.float, device=device).permute(2, 0, 1).unsqueeze(0)
+    reference_image_ = torch.tensor(reference_image, dtype=torch.float, device=device).permute(2, 0, 1).unsqueeze(0)
     # ATTENTION, here source and target images are Torch tensors of size 1x3xHxW, without further pre-processing
     # specific pre-processing (/255 and rescaling) are done within the function.
 
