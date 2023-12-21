@@ -100,6 +100,14 @@ class BasePWCNet(nn.Module):
             output_shape = (int(h_scale*scaling), int(w_scale*scaling))
 
         source_img, target_img, ratio_x, ratio_y = self.pre_process_data(source_img, target_img, self.device)
+
+        torch.onnx.export(self, (target_img, source_img), "PWCNet_GOCor_chairs_things.onnx",
+                          export_params=True, opset_version=16, do_constant_folding=True,
+                          input_names = ['query', 'reference'],
+                          output_names = ['output'],
+                          dynamic_axes={'query' : {0 : 'batch_size', 2: 'height', 3: 'width'},
+                                        'output' : {0 : 'batch_size', 2: 'height', 3: 'width'}})
+
         output = self.forward(target_img, source_img)
 
         flow_est_list = output['flow_estimates']
