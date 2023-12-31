@@ -249,7 +249,7 @@ class LocalGOCorrOpt(nn.Module):
                                  self.target_mask_predictor, self.v_minus_act, self.num_bins,
                                  self.spatial_weight_predictor)
 
-    def forward(self, filter_map, reference_feat, query_feat=None, num_iter=None, compute_losses=False):
+    def forward(self, filter_map, reference_feat, query_feat=None, num_iter=None, compute_losses=True):
         """
         Apply optimization loop on the initialized filter map
         args:
@@ -378,9 +378,12 @@ class LocalGOCorrOpt(nn.Module):
                                        losses['train_query_loss'][-1])
 
         if compute_losses:
-            print('LocalGOCor: train reference loss is {}'.format(losses['train_reference_loss']))
-            print('LocalGOCor: train query loss is {}'.format(losses['train_query_loss']))
-            print('LocalGOCor: train reg is {}\n'.format(losses['train_reg']))
+            # print('LocalGOCor: train reference loss is {}'.format(losses['train_reference_loss']))
+            # print('LocalGOCor: train query loss is {}'.format(losses['train_query_loss']))
+            # print('LocalGOCor: train reg is {}\n'.format(losses['train_reg']))
+
+            if loss_ref is not None:
+                loss_ref.backward()
 
         return filter_map, losses
 
@@ -417,10 +420,23 @@ class LocalGOCor(nn.Module):
         filter, losses = self.filter_optimizer(filter, reference_feat, query_feat=query_feat, **kwargs)
         
         # compute the local cost volume between optimized filter map and query features
-        scores = FunctionCorrelation(filter, query_feat)
+        # scores = FunctionCorrelation(filter, query_feat)
 
-        return scores
+        return filter
 
+    def save_gocor_modules(self, checkpoint_path, level):
+        optimizer_path = checkpoint_path + '/optimizer' + str(level) + '.pth'
+        gocor_path = checkpoint_path + '/gocor' + str(level) + '.pth'
+        torch.save(self.filter_optimizer.state_dict(), optimizer_path)
+        torch.save(self.state_dict(), gocor_path)
+
+    def restore_gocor_modules(self, checkpoint_path, level):
+        optimizer_path = checkpoint_path + '/optimizer' + str(level) + '.pth'
+        gocor_path = checkpoint_path + '/gocor' + str(level) + '.pth'
+        self.filter_optimizer.load_state_dict(torch.load(optimizer_path))
+        self.filter_optimizer.eval()
+        self.load_state_dict(torch.load(gocor_path))
+        self.eval()
 
 
 ######## Example ########

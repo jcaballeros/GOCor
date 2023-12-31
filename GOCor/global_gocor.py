@@ -54,6 +54,8 @@ class GlobalGOCorOpt(nn.Module):
                  apply_query_loss=False, reg_kernel_size=3, reg_inter_dim=1, reg_output_dim=1):
         super().__init__()
 
+        print('Global gocor optim iterations is ' + str(num_iter))
+
         self.num_iter = num_iter
         self.min_filter_reg = min_filter_reg
         self.log_step_length = nn.Parameter(math.log(init_step_length) * torch.ones(1))
@@ -142,7 +144,7 @@ class GlobalGOCorOpt(nn.Module):
                                   self.target_mask_predictor, self.v_minus_act, self.num_bins,
                                   self.spatial_weight_predictor)
 
-    def forward(self, filter_map, reference_feat, query_feat, num_iter=None, compute_losses=False):
+    def forward(self, filter_map, reference_feat, query_feat, num_iter=None, compute_losses=True):
         """
         Apply optimization loop on the initialized filter map
         args:
@@ -290,9 +292,10 @@ class GlobalGOCorOpt(nn.Module):
                 filter_map = filter_map - (step_length * alpha.view(num_sequences, num_filters, 1, 1, 1)) * filter_grad
 
         if compute_losses:
-            print('GlobalGOCor: train reference loss is {}'.format(losses['train_reference_loss']))
-            print('GlobalGOCor: train query loss is {}'.format(losses['train_query_loss']))
-            print('GlobalGOCor: train reg is {}\n'.format(losses['train_reg']))
+            # print('GlobalGOCor: train reference loss is {}'.format(losses['train_reference_loss']))
+            # print('GlobalGOCor: train query loss is {}'.format(losses['train_query_loss']))
+            # print('GlobalGOCor: train reg is {}\n'.format(losses['train_reg']))
+            loss_ref.backward()
 
         return filter_map, losses
 
@@ -343,34 +346,34 @@ class GlobalGOCor(nn.Module):
         # optimizes the filter map
         filter, losses = self.filter_optimizer(filter, reference_feat, query_feat=query_feat, **kwargs)
 
-        # with the resulting optimized filter map:
-        # computes the correspondence volume between the filter map and the query features
-        scores = filter_layer.apply_filter(query_feat, filter)
-        # resulting shape (1, B, HxW, H2, W2), but here filter_map is in channel dimension !
-        scores = torch.squeeze(scores, 0)  # shape is (b, H*W, H2, W2)
+        # # with the resulting optimized filter map:
+        # # computes the correspondence volume between the filter map and the query features
+        # scores = filter_layer.apply_filter(query_feat, filter)
+        # # resulting shape (1, B, HxW, H2, W2), but here filter_map is in channel dimension !
+        # scores = torch.squeeze(scores, 0)  # shape is (b, H*W, H2, W2)
 
-        if self.put_query_feat_in_channel_dimension:
-            # put query feat (query image) in channel dimension, resulting shape is (B, H2xW2, H, W)
-            scores = scores.view(scores.shape[0], *reference_feat.shape[-2:], -1).permute(0, 3, 1, 2).contiguous()
+        # if self.put_query_feat_in_channel_dimension:
+        #     # put query feat (query image) in channel dimension, resulting shape is (B, H2xW2, H, W)
+        #     scores = scores.view(scores.shape[0], *reference_feat.shape[-2:], -1).permute(0, 3, 1, 2).contiguous()
 
-        if self.post_processing == 'add_corr':
-            # compute also for the other direction
-            filter_source_image = self.filter_initializer(query_feat)
-            filter_source_image, losses_source_image = self.filter_optimizer(filter_source_image, query_feat, test_feat=reference_feat, **kwargs)
-            scores_source_image_transpose = filter_layer.apply_filter(reference_feat, filter_source_image)
-            scores_source_image_transpose = torch.squeeze(scores_source_image_transpose, 0)  # shape is (b, H*W, H, W)
-            # here source_image is in channel dimension already, no need to exchange dimension
-            scores = scores + scores_source_image_transpose
-        elif self.post_processing == 'leaky_relu_add_corr':
-            filter_source_image = self.filter_initializer(query_feat)
-            filter_source_image, losses_source_image = self.filter_optimizer(filter_source_image, query_feat, test_feat=reference_feat, **kwargs)
-            scores_source_image_transpose = filter_layer.apply_filter(reference_feat, filter_source_image)
-            scores_source_image_transpose = torch.squeeze(scores_source_image_transpose, 0)  # shape is (b, H*W, H, W)
-            # here source_image is in channel dimension already, no need to exchange dimension
-            scores = torch.nn.functional.leaky_relu(scores, negative_slope=0.1) + \
-                     torch.nn.functional.leaky_relu(scores_source_image_transpose, negative_slope=0.1)
+        # if self.post_processing == 'add_corr':
+        #     # compute also for the other direction
+        #     filter_source_image = self.filter_initializer(query_feat)
+        #     filter_source_image, losses_source_image = self.filter_optimizer(filter_source_image, query_feat, test_feat=reference_feat, **kwargs)
+        #     scores_source_image_transpose = filter_layer.apply_filter(reference_feat, filter_source_image)
+        #     scores_source_image_transpose = torch.squeeze(scores_source_image_transpose, 0)  # shape is (b, H*W, H, W)
+        #     # here source_image is in channel dimension already, no need to exchange dimension
+        #     scores = scores + scores_source_image_transpose
+        # elif self.post_processing == 'leaky_relu_add_corr':
+        #     filter_source_image = self.filter_initializer(query_feat)
+        #     filter_source_image, losses_source_image = self.filter_optimizer(filter_source_image, query_feat, test_feat=reference_feat, **kwargs)
+        #     scores_source_image_transpose = filter_layer.apply_filter(reference_feat, filter_source_image)
+        #     scores_source_image_transpose = torch.squeeze(scores_source_image_transpose, 0)  # shape is (b, H*W, H, W)
+        #     # here source_image is in channel dimension already, no need to exchange dimension
+        #     scores = torch.nn.functional.leaky_relu(scores, negative_slope=0.1) + \
+        #              torch.nn.functional.leaky_relu(scores_source_image_transpose, negative_slope=0.1)
 
-        return scores, losses
+        return filter
 
 
 ######## Example ########

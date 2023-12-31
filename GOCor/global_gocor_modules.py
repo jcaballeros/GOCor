@@ -16,6 +16,7 @@ from . import global_gocor
 from . import global_corr_initializer
 import torch.nn as nn
 from .optimizer_selection_functions import define_optimizer_global_corr
+import torch
 
 
 class GlobalGOCorWithSimpleInitializer(nn.Module):
@@ -33,11 +34,11 @@ class GlobalGOCorWithSimpleInitializer(nn.Module):
                  put_query_feat_in_channel_dimension=True):
         super(GlobalGOCorWithSimpleInitializer, self).__init__()
 
-        initializer = global_corr_initializer.GlobalCorrSimpleInitializer(filter_size=filter_size)
+        self.initializer = global_corr_initializer.GlobalCorrSimpleInitializer(filter_size=filter_size)
 
-        optimizer = define_optimizer_global_corr(global_gocor_arguments)
+        self.optimizer = define_optimizer_global_corr(global_gocor_arguments)
 
-        corr_module = global_gocor.GlobalGOCor(filter_initializer=initializer, filter_optimizer=optimizer,
+        corr_module = global_gocor.GlobalGOCor(filter_initializer=self.initializer, filter_optimizer=self.optimizer,
                                                put_query_feat_in_channel_dimension=put_query_feat_in_channel_dimension)
         self.corr_module = corr_module
 
@@ -57,6 +58,21 @@ class GlobalGOCorWithSimpleInitializer(nn.Module):
         """
 
         return self.corr_module(reference_feat, query_feat, **kwargs)
+
+    def save_gocor_modules(self, checkpoint_path, level):
+        optimizer_path = checkpoint_path + '/optimizer' + str(level) + '.pth'
+        gocor_path = checkpoint_path + '/gocor' + str(level) + '.pth'
+        torch.save(self.optimizer.state_dict(), optimizer_path)
+        torch.save(self.state_dict(), gocor_path)
+
+    def restore_gocor_modules(self, checkpoint_path, level):
+        optimizer_path = checkpoint_path + '/optimizer' + str(level) + '.pth'
+        gocor_path = checkpoint_path + '/gocor' + str(level) + '.pth'
+        self.optimizer.load_state_dict(torch.load(optimizer_path))
+        self.optimizer.eval()
+        self.load_state_dict(torch.load(gocor_path))
+        self.eval()
+
 
 
 class GlobalGOCorWithFlexibleSimpleInitializer(nn.Module):
